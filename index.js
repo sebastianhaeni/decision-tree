@@ -1,62 +1,47 @@
-const util = require('util')
+const util = require('util');
 
-const DATA = [
-    { age: "young", spectacle: "myope", astigmatism: "no", tears: "reduced", recommended: "none" },
-    { age: "young", spectacle: "myope", astigmatism: "no", tears: "normal", recommended: "soft" },
-    { age: "young", spectacle: "myope", astigmatism: "yes", tears: "reduced", recommended: "none" },
-    { age: "young", spectacle: "myope", astigmatism: "yes", tears: "normal", recommended: "hard" },
-    { age: "young", spectacle: "hypermetrope", astigmatism: "no", tears: "reduced", recommended: "none" },
-    { age: "young", spectacle: "hypermetrope", astigmatism: "no", tears: "normal", recommended: "soft" },
-    { age: "young", spectacle: "hypermetrope", astigmatism: "yes", tears: "reduced", recommended: "none" },
-    { age: "young", spectacle: "hypermetrope", astigmatism: "yes", tears: "normal", recommended: "hard" },
-    { age: "pre-presbyopic", spectacle: "myope", astigmatism: "no", tears: "reduced", recommended: "none" },
-    { age: "pre-presbyopic", spectacle: "myope", astigmatism: "no", tears: "normal", recommended: "soft" },
-    { age: "pre-presbyopic", spectacle: "myope", astigmatism: "yes", tears: "reduced", recommended: "none" },
-    { age: "pre-presbyopic", spectacle: "myope", astigmatism: "yes", tears: "normal", recommended: "hard" },
-    { age: "pre-presbyopic", spectacle: "hypermetrope", astigmatism: "no", tears: "reduced", recommended: "none" },
-    { age: "pre-presbyopic", spectacle: "hypermetrope", astigmatism: "no", tears: "normal", recommended: "soft" },
-    { age: "pre-presbyopic", spectacle: "hypermetrope", astigmatism: "yes", tears: "reduced", recommended: "none" },
-    { age: "pre-presbyopic", spectacle: "hypermetrope", astigmatism: "yes", tears: "normal", recommended: "none" },
-    { age: "presbyopic", spectacle: "myope", astigmatism: "no", tears: "reduced", recommended: "none" },
-    { age: "presbyopic", spectacle: "myope", astigmatism: "no", tears: "normal", recommended: "none" },
-    { age: "presbyopic", spectacle: "myope", astigmatism: "yes", tears: "reduced", recommended: "none" },
-    { age: "presbyopic", spectacle: "myope", astigmatism: "yes", tears: "normal", recommended: "hard" },
-    { age: "presbyopic", spectacle: "hypermetrope", astigmatism: "no", tears: "reduced", recommended: "none" },
-    { age: "presbyopic", spectacle: "hypermetrope", astigmatism: "no", tears: "normal", recommended: "soft" },
-    { age: "presbyopic", spectacle: "hypermetrope", astigmatism: "yes", tears: "reduced", recommended: "none" },
-    { age: "presbyopic", spectacle: "hypermetrope", astigmatism: "yes", tears: "normal", recommended: "none" },
-];
+const DATA = require('./data/weather.json');
 
-let dataEntropy = evaluate(DATA);
+let root = choose(DATA, ['play']);
+expand(DATA, root, ['play']);
 
-let root = {
-    entropy: dataEntropy
-}
+console.log(util.inspect(root, false, null));
 
-expand(DATA, root, 'age', ['recommended'])
+//display(root, '');
 
-console.log(util.inspect(root, false, null))
-
-
-function expand(rows, node, key, used) {
-    if (used.length === 5) {
+function display(node, indent) {
+    if (!node.key) {
         return;
     }
-    node.children = rows.map(row => row[key])
+    console.log(indent + node.key);
+    if (!node.children) {
+        return;
+    }
+    node.children.forEach(child => {
+        console.log(indent + ' - ' + child.value + ':');
+        display(child.node, indent + '    ');
+    });
+}
+
+function expand(rows, node, used) {
+    if (node.entropy === 0) {
+        return;
+    }
+    let ignore = used.slice();
+    ignore.push(node.key);
+    node.children = rows.map(row => row[node.key])
         .filter(distinct)
         .map(value => {
-            let ignore = used.slice();
-            ignore.push(value);
             let child = {
                 value: value,
-                node: choose(rows.filter(row => row[key] === value), node.entropy, ignore)
+                node: choose(rows.filter(row => row[node.key] === value), ignore)
             };
-            expand(rows, child, child.key, ignore);
+            expand(rows, child.node, ignore);
             return child;
         });
 }
 
-function choose(rows, root, used) {
+function choose(rows, used) {
     if (rows.length == 0) {
         return null;
     }
@@ -65,21 +50,21 @@ function choose(rows, root, used) {
         .map(key => {
             return {
                 key: key,
-                entropy: evaluateRow(rows, key, used)
+                entropy: evaluateRow(rows, key)
             };
         })
-        .reduce((a, b) => a.entropy > b.entropy ? a : b, { entropy: 0 });
+        .reduce((a, b) => a.entropy > b.entropy ? a : b, {entropy: 0});
 }
 
-function evaluateRow(rows, property, used) {
-    let sum = simplify(count(rows.filter(row => row[property]), used)).reduce((a, b) => a + b, 0);
+function evaluateRow(rows, property) {
+    let sum = simplify(count(rows.filter(row => row[property]), property)).reduce((a, b) => a + b, 0);
     return rows
         .map(row => row[property])
         .filter(distinct)
         .map(value => {
             let filtered = rows.filter(row => row[property] === value);
             return {
-                entropy: evaluate(filtered, used),
+                entropy: evaluate(filtered, property),
                 key: value,
                 count: filtered.length
             };
@@ -96,15 +81,15 @@ function simplify(counts) {
     return Object.keys(counts).map(k => counts[k]);
 }
 
-function count(rows, resultProperty) {
+function count(rows, key) {
     let d = [];
-    rows.map(row => row.recommended)
+    rows.map(row => row[key])
         .forEach(v => d[v] === undefined ? d[v] = 1 : d[v]++);
     return d;
 }
 
-function evaluate(rows, used) {
-    return entropy(normalize(count(rows, used)));
+function evaluate(rows, property) {
+    return entropy(normalize(count(rows, property)), property);
 }
 
 function normalize(values) {
